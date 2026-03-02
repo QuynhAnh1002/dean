@@ -22,7 +22,14 @@ WORK_TIME_LIMIT = 20 * 60 # 20 phút
 
 class EyeProcessor(VideoProcessorBase):
     def __init__(self):
-        self.face_mesh = mp.solutions.face_mesh.FaceMesh(refine_landmarks=True)
+        self.mp_face_mesh = mp.solutions.face_mesh
+        self.face_mesh = self.mp_face_mesh.FaceMesh(
+            static_image_mode=False,
+            max_num_faces=1,
+            refine_landmarks=True,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+            )
         self.blink_count = 0
         self.last_blink_time = time.time()
         self.start_time = time.time()
