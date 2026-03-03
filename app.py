@@ -65,7 +65,7 @@ class EyeProcessor(VideoProcessorBase):
             # LOGIC: CHỈ NHẮM MẮT KHI HAI ĐƯỜNG TRÙNG NHAU (Ngưỡng cực thấp)
             # Bình thường EAR khi mở mắt của bạn đang tầm 0.2 - 0.25. 
             # Chúng ta hạ xuống 0.12 để đảm bảo mí mắt phải sát nhau mới báo nhắm.
-            if self.ear < 0.12: 
+            if self.ear < 0.08: 
                 self.last_blink = curr
                 color = (0, 0, 255) # MÀU ĐỎ (Khi mí mắt đã trùng/gập vào nhau)
             else:
