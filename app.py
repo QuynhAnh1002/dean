@@ -7,9 +7,9 @@ import numpy as np
 import av
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="Eye Wellness Pro AI", layout="wide")
+st.set_page_config(page_title="Hệ thống Bảo vệ Mắt AI", layout="wide")
 
-# JavaScript: Gửi thông báo hệ thống và phát âm thanh
+# JavaScript: Thông báo đẩy + Phát âm thanh (Yêu cầu quyền Notifications)
 def trigger_alert_js(title, message):
     js_code = f"""
     <script>
@@ -20,29 +20,29 @@ def trigger_alert_js(title, message):
         new Notification("{title}", {{ body: "{message}" }});
     }}
     var audio = new Audio("https://www.soundjay.com/buttons/beep-01a.mp3");
-    audio.play();
+    audio.play().catch(e => console.log("Cần click chuột để phát thanh"));
     </script>
     """
     components.html(js_code, height=0, width=0)
 
-st.title("🛡️ AI Eye Guard - Đã sửa lỗi Cảnh báo 10s")
+st.title("🛡️ AI Eye Guard - Cảnh Báo Đa Tầng")
 
 col_vid, col_stats = st.columns([2, 1])
 
 with col_stats:
-    st.subheader("📊 Chỉ số trực tiếp")
-    # Các ô hiển thị dữ liệu sẽ được cập nhật liên tục
-    blink_ui = st.empty()  
-    dist_ui = st.empty()
-    timer_ui = st.empty()
+    st.subheader("📊 Giám sát chỉ số")
+    blink_metric = st.empty()  # Hiện số giây chưa chớp mắt
+    dist_status = st.empty()   # Hiện trạng thái ngồi gần/xa
+    timer_metric = st.empty()  # Đếm ngược 20 phút
     st.divider()
-    st.info("Hướng dẫn: Sau khi nhấn Start, hãy Click chuột vào trang web 1 lần để kích hoạt âm thanh báo động.")
+    st.info("💡 Mẹo: Nếu số giây > 10 mà chưa báo, hãy Click vào web 1 lần để trình duyệt cho phép chạy thông báo.")
 
 class EyeProcessor(VideoProcessorBase):
     def __init__(self):
         self.face_mesh = mp.solutions.face_mesh.FaceMesh(refine_landmarks=True)
         self.last_blink = time.time()
-        self.is_too_close = False
+        self.start_time = time.time()
+        self.too_close = False
         self.ear = 1.0
 
     def recv(self, frame):
@@ -56,71 +56,74 @@ class EyeProcessor(VideoProcessorBase):
         if results.multi_face_landmarks:
             res = results.multi_face_landmarks[0].landmark
             
-            # Tính EAR (Độ mở mắt)
-            # Tăng độ nhạy: EAR < 0.22 là chớp mắt
+            # 1. Logic Chớp mắt (Tăng EAR lên 0.23 để nhạy hơn)
             v_dist = np.abs(res[159].y - res[145].y)
             h_dist = np.abs(res[33].x - res[263].x)
             self.ear = v_dist / (h_dist + 1e-6)
 
-            if self.ear < 0.22: 
+            if self.ear < 0.23: 
                 self.last_blink = curr
 
-            # Đo khoảng cách (Iris)
-            dist = np.sqrt((res[468].x - res[473].x)**2 + (res[468].y - res[473].y)**2) * w
-            self.is_too_close = dist > 115
+            # 2. Logic Khoảng cách
+            dist_iris = np.sqrt((res[468].x - res[473].x)**2 + (res[468].y - res[473].y)**2) * w
+            self.too_close = dist_iris > 115 
 
-            # Vẽ trực tiếp lên khung hình để kiểm tra logic
-            diff = int(curr - self.last_blink)
-            cv2.putText(img, f"No blink: {diff}s", (30, 50), 1, 2, (0, 255, 0), 2)
-            if diff > 10:
-                cv2.putText(img, "BLINK!", (w//3, h//2), 1, 4, (0, 0, 255), 5)
+            # --- CẢNH BÁO TRỰC TIẾP TRÊN MÀN HÌNH CAMERA ---
+            diff_blink = int(curr - self.last_blink)
+            
+            # Cảnh báo chớp mắt (Chữ nhấp nháy đỏ rực giữa màn hình)
+            if diff_blink > 10:
+                # Hiệu ứng nhấp nháy theo thời gian
+                if int(curr * 4) % 2 == 0: 
+                    cv2.putText(img, "!!! BLINK NOW !!!", (w//4, h//2), 
+                                cv2.FONT_HERSHEY_DUPLEX, 2.0, (0, 0, 255), 5)
+                # Vẽ khung đỏ bao quanh màn hình
+                cv2.rectangle(img, (0,0), (w,h), (0,0,255), 20)
+
+            # Cảnh báo lùi xa
+            if self.too_close:
+                cv2.putText(img, "TOO CLOSE!", (30, h-50), 
+                            cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 255), 3)
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 with col_vid:
     ctx = webrtc_streamer(
-        key="eye-guard-fix",
+        key="eye-guard-final-v2",
         video_processor_factory=EyeProcessor,
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-        media_stream_constraints={"video": True, "audio": False}, # Tắt Mic
+        media_stream_constraints={"video": True, "audio": False},
         async_processing=True
     )
 
-# --- VÒNG LẶP KIỂM TRA & CẬP NHẬT UI ---
-# Đoạn này cực kỳ quan trọng để bắn thông báo JS
+# --- VÒNG LẶP ĐỒNG BỘ GIAO DIỆN & THÔNG BÁO ---
 if ctx.video_processor:
-    # Khởi tạo mốc thời gian nghỉ 20p
-    start_session = time.time()
-    last_alert_time = 0 
-
+    last_alert = 0
     while True:
         curr_loop = time.time()
         
-        # 1. Lấy dữ liệu từ VideoProcessor
-        last_blink = ctx.video_processor.last_blink
-        diff_blink = int(curr_loop - last_blink)
-        
-        # 2. Cập nhật con số lên màn hình (Dashboard)
-        blink_ui.metric("Thời gian chưa chớp mắt", f"{diff_blink} giây")
-        
-        # 3. CẢNH BÁO 10 GIÂY (Chống bắn thông báo liên tục gây treo web)
-        if diff_blink > 10 and (curr_loop - last_alert_time) > 5:
-            trigger_alert_js("Mỏi mắt quá!", f"Bạn đã không chớp mắt {diff_blink} giây rồi!")
-            last_alert_time = curr_loop # Đợi 5s sau mới báo tiếp
+        # Lấy dữ liệu từ Camera ra Dashboard
+        sec_no_blink = int(curr_loop - ctx.video_processor.last_blink)
+        blink_metric.metric("Chưa chớp mắt trong", f"{sec_no_blink} giây")
 
-        # 4. Cảnh báo khoảng cách
-        if ctx.video_processor.is_too_close:
-            dist_ui.error("🚫 NGỒI QUÁ SÁT MÀN HÌNH")
+        # Bắn thông báo JavaScript (Mỗi 5 giây báo 1 lần để tránh treo)
+        if sec_no_blink > 10 and (curr_loop - last_alert) > 5:
+            trigger_alert_js("Cảnh báo mỏi mắt!", f"Bạn đã không chớp mắt {sec_no_blink} giây rồi!")
+            last_alert = curr_loop
+
+        # Cập nhật trạng thái khoảng cách
+        if ctx.video_processor.too_close:
+            dist_status.error("🚫 NGỒI QUÁ SÁT MÀN HÌNH")
         else:
-            dist_ui.success("✅ Khoảng cách an toàn")
+            dist_status.success("✅ Khoảng cách an toàn")
 
-        # 5. Đồng hồ 20 phút
-        elapsed = int(curr_loop - start_session)
-        rem = max(0, (20 * 60) - elapsed)
-        timer_ui.metric("Nghỉ ngơi sau", f"{rem//60:02d}:{rem%60:02d}")
+        # Đồng hồ 20 phút
+        elapsed = int(curr_loop - ctx.video_processor.start_time)
+        remaining = max(0, (20 * 60) - elapsed)
+        timer_metric.metric("Nghỉ ngơi sau", f"{remaining//60:02d}:{remaining%60:02d}")
         
-        if rem <= 0:
-            trigger_alert_js("Đến giờ nghỉ!", "Hãy nhìn xa 20 feet trong 20 giây.")
-            start_session = time.time()
+        if remaining <= 0:
+            trigger_alert_js("Hết 20 phút!", "Hãy nhìn xa 20 feet trong 20 giây.")
+            ctx.video_processor.start_time = time.time()
 
-        time.sleep(0.5) # Quét mỗi nửa giây
+        time.sleep(0.5)
