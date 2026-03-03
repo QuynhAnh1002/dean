@@ -7,10 +7,9 @@ import numpy as np
 import av
 import streamlit.components.v1 as components
 
-# Cấu hình Web
-st.set_page_config(page_title="Eye Wellness Pro", layout="wide")
+st.set_page_config(page_title="Eye Wellness Pro AI", layout="wide")
 
-# JavaScript: Thông báo góc màn hình (System Notification)
+# JavaScript để bắn thông báo ra góc màn hình
 def trigger_alert_js(title, message):
     js_code = f"""
     <script>
@@ -23,7 +22,7 @@ def trigger_alert_js(title, message):
     """
     components.html(js_code, height=0, width=0)
 
-st.title("🛡️ AI Eye Guard - Hệ thống bảo vệ mắt đa tầng")
+st.title("🛡️ AI Eye Guard - Bảo vệ mắt đa tầng")
 
 class EyeProcessor(VideoProcessorBase):
     def __init__(self):
@@ -39,12 +38,11 @@ class EyeProcessor(VideoProcessorBase):
 
         if results.multi_face_landmarks:
             res = results.multi_face_landmarks[0].landmark
-            # 1. Đo chớp mắt
+            # 1. EAR (Chớp mắt)
             ear = np.abs(res[159].y - res[145].y) / (np.abs(res[33].x - res[263].x) + 1e-6)
             if ear < 0.2: self.last_blink = time.time()
 
-            # 2. Đo khoảng cách (Nhìn gần/xa)
-            # Khoảng cách giữa 2 đồng tử (Iris Distance)
+            # 2. Khoảng cách (Iris Distance) - Nhìn gần/xa
             dist = np.sqrt((res[468].x - res[473].x)**2 + (res[468].y - res[473].y)**2) * w
             self.too_close = dist > 115 
 
@@ -53,11 +51,14 @@ class EyeProcessor(VideoProcessorBase):
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-ctx = webrtc_streamer(key="eye-pro", video_processor_factory=EyeProcessor)
+ctx = webrtc_streamer(
+    key="eye-pro", 
+    video_processor_factory=EyeProcessor,
+    rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
 
-# Quét trạng thái để bắn thông báo hệ thống
 if ctx.video_processor:
     if (time.time() - ctx.video_processor.last_blink) > 10:
-        trigger_alert_js("Mắt bạn đang khô!", "Hãy chớp mắt ngay!")
+        trigger_alert_js("Cảnh báo mắt", "Bạn quên chớp mắt quá lâu rồi!")
     if ctx.video_processor.too_close:
-        trigger_alert_js("Ngồi quá gần!", "Hãy lùi xa màn hình!")
+        trigger_alert_js("Cảnh báo khoảng cách", "Bạn đang ngồi quá sát màn hình!")
