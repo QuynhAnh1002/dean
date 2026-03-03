@@ -7,9 +7,9 @@ import numpy as np
 import av
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="AI Eye Guard - Precision Tracker", layout="wide")
+st.set_page_config(page_title="AI Eye Guard - Full Features", layout="wide")
 
-# JavaScript: Thông báo hệ thống
+# JavaScript: Thông báo đẩy và âm thanh
 def trigger_alert_js(title, message):
     js_code = f"""
     <script>
@@ -22,15 +22,18 @@ def trigger_alert_js(title, message):
     """
     components.html(js_code, height=0, width=0)
 
-st.title("🛡️ AI Eye Guard - Chế độ nhận diện chính xác")
+st.title("🛡️ AI Eye Guard - Bảo vệ mắt toàn diện")
 
 col_vid, col_stats = st.columns([2, 1])
 
 with col_stats:
-    st.subheader("📊 Trạng thái nhãn cầu")
+    st.subheader("📊 Thông số Dashboard")
     blink_metric = st.empty()
+    dist_status = st.empty()
+    timer_metric = st.empty()
     st.divider()
-    st.info("💡 Chế độ mới: Chỉ khi mí mắt trên và dưới gần như chạm nhau (trùng nhau), khung mới chuyển sang MÀU ĐỎ.")
+    st.info("💡 Tỉ lệ chớp mắt: 0.09 (Cực thấp - Chỉ đỏ khi mí mắt chạm nhau).")
+    st.warning("Hãy Click vào web 1 lần sau khi nhấn Start để bật âm thanh.")
 
 class EyeProcessor(VideoProcessorBase):
     def __init__(self):
@@ -52,55 +55,82 @@ class EyeProcessor(VideoProcessorBase):
             mesh_points = np.array([np.multiply([p.x, p.y], [w, h]).astype(int) 
                                    for p in results.multi_face_landmarks[0].landmark])
             
-            # Tọa độ mí mắt trái và phải để vẽ khung
+            # Tọa độ mí mắt để vẽ khung
             left_eye = mesh_points[[33, 160, 158, 133, 153, 144]]
             right_eye = mesh_points[[362, 385, 387, 263, 373, 380]]
 
-            # TÍNH TOÁN EAR (Khoảng cách giữa các điểm mí mắt)
-            # 159 (mí trên) và 145 (mí dưới)
+            # 1. LOGIC CHỚP MẮT (EAR) - Siết tỉ lệ 0.09
             v_dist = np.linalg.norm(mesh_points[159] - mesh_points[145])
             h_dist = np.linalg.norm(mesh_points[33] - mesh_points[263])
             self.ear = v_dist / (h_dist + 1e-6)
 
-            # LOGIC: CHỈ NHẮM MẮT KHI HAI ĐƯỜNG TRÙNG NHAU (Ngưỡng cực thấp)
-            # Bình thường EAR khi mở mắt của bạn đang tầm 0.2 - 0.25. 
-            # Chúng ta hạ xuống 0.12 để đảm bảo mí mắt phải sát nhau mới báo nhắm.
-            if self.ear < 0.04: 
+            # Chỉ đỏ khi mí mắt trùng sát nhau (< 0.09)
+            if self.ear < 0.09: 
                 self.last_blink = curr
-                color = (0, 0, 255) # MÀU ĐỎ (Khi mí mắt đã trùng/gập vào nhau)
+                color = (0, 0, 255) # ĐỎ
             else:
-                color = (0, 255, 0) # MÀU XANH (Khi mí mắt còn khoảng cách - Mắt mở)
+                color = (0, 255, 0) # XANH
 
-            # Vẽ khung theo dõi chuyển động
+            # Vẽ khung theo dõi mắt
             cv2.polylines(img, [left_eye], True, color, 1, cv2.LINE_AA)
             cv2.polylines(img, [right_eye], True, color, 1, cv2.LINE_AA)
             
-            # Hiển thị thông báo nếu quên chớp mắt quá 10 giây
-            diff = int(curr - self.last_blink)
-            if diff > 10:
+            # 2. LOGIC KHOẢNG CÁCH (Ngồi gần)
+            # 468 và 473 là tâm mống mắt
+            iris_dist = np.linalg.norm(mesh_points[468] - mesh_points[473])
+            self.too_close = iris_dist > 115 # Ngưỡng ngồi quá sát
+
+            # Cảnh báo trực tiếp trên màn hình cam
+            if self.too_close:
+                cv2.putText(img, "BACK AWAY!", (w//4, h//2 + 50), 
+                            cv2.FONT_HERSHEY_DUPLEX, 1.5, (0, 0, 255), 3)
+
+            # Cảnh báo quên chớp mắt 10s trên cam
+            diff_blink = int(curr - self.last_blink)
+            if diff_blink > 10:
                 cv2.putText(img, "!!! HAY CHOP MAT !!!", (w//5, 80), 
                             cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 255), 2)
-                cv2.rectangle(img, (0, 0), (w, h), (0, 0, 255), 5)
+                cv2.rectangle(img, (0, 0), (w, h), (0, 0, 255), 8)
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 with col_vid:
     ctx = webrtc_streamer(
-        key="eye-precision-v3",
+        key="eye-guard-all-in-one",
         video_processor_factory=EyeProcessor,
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True
     )
 
+# --- VÒNG LẶP ĐỒNG BỘ DASHBOARD & THÔNG BÁO ---
 if ctx.video_processor:
+    last_alert_time = 0
     while True:
         curr_loop = time.time()
+        
+        # Cập nhật số giây chưa chớp mắt
         sec_no_blink = int(curr_loop - ctx.video_processor.last_blink)
-        blink_metric.metric("Thời gian chưa chớp mắt", f"{sec_no_blink}s")
+        blink_metric.metric("Chưa chớp mắt trong", f"{sec_no_blink}s")
 
-        if sec_no_blink > 10:
-            trigger_alert_js("Cảnh báo mỏi mắt", "Đã 10 giây bạn chưa chớp mắt!")
-            time.sleep(5)
-            
-        time.sleep(1)
+        if sec_no_blink > 10 and (curr_loop - last_alert_time) > 5:
+            trigger_alert_js("Mỏi mắt!", "Bạn đã không chớp mắt hơn 10 giây!")
+            last_alert_time = curr_loop
+
+        # Cập nhật trạng thái ngồi gần
+        if ctx.video_processor.too_close:
+            dist_status.error("🚫 CẢNH BÁO: NGỒI QUÁ GẦN")
+            # Có thể thêm trigger_alert_js ở đây nếu muốn báo cả ngồi gần ra tab khác
+        else:
+            dist_status.success("✅ Khoảng cách an toàn")
+
+        # Cập nhật đồng hồ 20 phút (Quy tắc 20-20-20)
+        elapsed = int(curr_loop - ctx.video_processor.start_time)
+        rem = max(0, (20 * 60) - elapsed)
+        timer_metric.metric("Nghỉ ngơi sau", f"{rem//60:02d}:{rem%60:02d}")
+        
+        if rem <= 0:
+            trigger_alert_js("Hết 20 phút!", "Hãy nhìn xa 20 feet trong 20 giây.")
+            ctx.video_processor.start_time = time.time()
+
+        time.sleep(0.5)
