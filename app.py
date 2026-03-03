@@ -32,8 +32,8 @@ with col_stats:
     dist_status = st.empty()
     timer_metric = st.empty()
     st.divider()
-    st.info("💡 Tỉ lệ chớp mắt: 0.09 (Cực thấp - Chỉ đỏ khi mí mắt chạm nhau).")
-    st.warning("Hãy Click vào web 1 lần sau khi nhấn Start để bật âm thanh.")
+    st.info("💡 BẢO VỆ ĐÔI MẮT CỦA BẠN")
+    st.warning("Hãy nghỉ ngơi sau 20 phút nhìn màn hình bạn nhé!")
 
 class EyeProcessor(VideoProcessorBase):
     def __init__(self):
@@ -126,7 +126,7 @@ if ctx.video_processor:
 
         # Cập nhật đồng hồ 20 phút (Quy tắc 20-20-20)
         elapsed = int(curr_loop - ctx.video_processor.start_time)
-        rem = max(0, (20 * 60) - elapsed)
+        rem = max(0, (1 * 60) - elapsed)
         timer_metric.metric("Nghỉ ngơi sau", f"{rem//60:02d}:{rem%60:02d}")
         
         if rem <= 0:
