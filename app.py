@@ -126,7 +126,7 @@ if ctx.video_processor:
 
         # Cập nhật đồng hồ 20 phút (Quy tắc 20-20-20)
         elapsed = int(curr_loop - ctx.video_processor.start_time)
-        rem = max(0, (1 * 60) - elapsed)
+        rem = max(0, (20 * 60) - elapsed)
         timer_metric.metric("Nghỉ ngơi sau", f"{rem//60:02d}:{rem%60:02d}")
         
         if rem <= 0:
