@@ -28,7 +28,7 @@ pip install -r requirements.txt
 - Cho phép ứng dụng truy cập Camera và Thông báo (Notifications) trên trình duyệt.
 - Nhấn nút Start để bắt đầu giám sát.
 4. Cấu trúc dự án (Project Structure)
-app.py: Mã nguồn chính xử lý logic AI và giao diện.
-requirements.txt: Danh sách các thư viện Python cần thiết.
-packages.txt: Các thư viện hệ thống cho môi trường Linux.
-website streamlit: eaqenjdnbti93fh64jkczt.streamlit.app 
+- app.py: Mã nguồn chính xử lý logic AI và giao diện.
+- requirements.txt: Danh sách các thư viện Python cần thiết.
+- packages.txt: Các thư viện hệ thống cho môi trường Linux.
+- website streamlit: eaqenjdnbti93fh64jkczt.streamlit.app 
